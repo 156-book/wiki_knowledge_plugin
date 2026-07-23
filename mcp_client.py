@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import json
 import os
 import re
@@ -44,6 +45,12 @@ def decode_tool_payload(payload: Any) -> Any:
         try:
             value = json.loads(value)
         except json.JSONDecodeError:
+            if value.lstrip().startswith(("{", "[")):
+                try:
+                    value = ast.literal_eval(value)
+                    continue
+                except (SyntaxError, ValueError):
+                    pass
             break
     return value
 
@@ -56,6 +63,7 @@ _WRAPPER_KEYS = (
     "wiki_content",
     "output",
     "payload",
+    "message",
 )
 
 
@@ -141,7 +149,16 @@ def normalize_document_payload(payload: Any) -> dict[str, Any]:
             return normalized
         if has_metadata and fallback is None:
             fallback = normalized
-    return fallback or {}
+    if fallback:
+        return fallback
+
+    root = decode_tool_payload(payload)
+    if isinstance(root, dict) and root.get("success") is True:
+        message = root.get("message")
+        text = _text_from_content(message)
+        if text:
+            return {"title": "Wiki文档", "content": text}
+    return {}
 
 
 def normalize_search_payload(payload: Any) -> dict[str, Any]:
@@ -299,6 +316,18 @@ class WikiMCPClient:
 
     def fetch_document(self, url: str) -> dict[str, Any]:
         payload = self.call_tool("fetch_wiki_content", {"url": url})
+        root = decode_tool_payload(payload)
+        if isinstance(root, dict) and "success" in root:
+            success = root.get("success")
+            failed = success is False or str(success).strip().casefold() in {
+                "false",
+                "0",
+                "failed",
+                "error",
+            }
+            if failed:
+                message = " ".join(str(root.get("message") or "未知错误").split())[:800]
+                raise MCPClientError(f"Wiki-MCP读取文档失败：{message}")
         decoded = normalize_document_payload(payload)
         if not decoded:
             raise MCPClientError(

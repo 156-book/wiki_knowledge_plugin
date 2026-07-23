@@ -11,6 +11,8 @@ from wiki_knowledge_plugin.knowledge_service import (
     format_answer,
 )
 from wiki_knowledge_plugin.mcp_client import (
+    MCPClientError,
+    WikiMCPClient,
     decode_tool_payload,
     normalize_document_payload,
     normalize_search_payload,
@@ -274,6 +276,41 @@ class KnowledgeServiceTests(unittest.TestCase):
         result = normalize_search_payload(payload)
 
         self.assertEqual([], result["records"])
+
+    def test_document_payload_accepts_success_message_json_wrapper(self):
+        payload = {
+            "success": True,
+            "message": json.dumps(
+                {"title": "message包装文档", "content": "message中的正文"},
+                ensure_ascii=False,
+            ),
+        }
+
+        document = normalize_document_payload(payload)
+
+        self.assertEqual("message包装文档", document["title"])
+        self.assertEqual("message中的正文", document["content"])
+
+    def test_document_payload_accepts_success_message_plain_markdown(self):
+        payload = {"success": True, "message": "# 标题\n\n这是Markdown正文。"}
+
+        document = normalize_document_payload(payload)
+
+        self.assertEqual("# 标题\n\n这是Markdown正文。", document["content"])
+
+    def test_fetch_document_surfaces_failed_success_message_wrapper(self):
+        client = WikiMCPClient(MCPSettings(transport="stdio", command=("uvx",)))
+        client.call_tool = lambda *_args, **_kwargs: {
+            "success": False,
+            "message": "当前账号无权读取该文档",
+        }
+        try:
+            with self.assertRaisesRegex(
+                MCPClientError, "Wiki-MCP读取文档失败：当前账号无权读取该文档"
+            ):
+                client.fetch_document("https://wiki.huawei.com/doc")
+        finally:
+            client._executor.shutdown(wait=False, cancel_futures=True)
 
 
 if __name__ == "__main__":
