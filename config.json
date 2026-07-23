@@ -67,7 +67,6 @@
   },
   "extra_config": {
     "w3_account": "__REPLACE_WITH_W3_ACCOUNT__",
-    "w3_password_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_PASSWORD__",
-    "llm_api_key_encrypted": "__REPLACE_WITH_ENCRYPTED_LLM_API_KEY__"
+    "w3_password_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_PASSWORD__"
   }
 }

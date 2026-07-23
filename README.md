@@ -8,7 +8,7 @@
 
 1. 将 `owner` 和白名单中的占位符替换为插件负责人工号。
 2. 将 `wiki_knowledge.roots[0].url` 替换为团队Wiki根文档链接。
-3. `llm.base_url` 当前按内部接口文档填写为 `http://api.openai.rnd.huawei.com/v1`，模型暂用 `Claude 3.5 Sonnet`。如果模型服务要求真实Key，请将 `llm.api_key` 改为可用值，或使用加密的 `extra_config.llm_api_key_encrypted`。
+3. `llm.base_url` 当前按内部接口文档填写为 `http://api.openai.rnd.huawei.com/v1`，模型暂用 `Claude 3.5 Sonnet`。API Key直接配置在 `llm.api_key`；如果后续要求安全存储，也可以改用代码支持的加密字段 `extra_config.llm_api_key_encrypted`。
 4. 在小鲁班开发工具中运行 `python main.py`，选择“加密数据”，加密W3密码和模型API Key后填写到 `extra_config`。
 5. 将 `extra_config.w3_account` 替换为W3账号。
 6. 内部AI市场当前页面的版本与本地 `uvx` 安装命令版本可能不同，发布前应把 `wiki_mcp.command` 替换为页面上最新的完整 `uvx` 命令。
