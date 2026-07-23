@@ -10,7 +10,11 @@ from wiki_knowledge_plugin.knowledge_service import (
     RetrievedDocument,
     format_answer,
 )
-from wiki_knowledge_plugin.mcp_client import decode_tool_payload
+from wiki_knowledge_plugin.mcp_client import (
+    decode_tool_payload,
+    normalize_document_payload,
+    normalize_search_payload,
+)
 from wiki_knowledge_plugin.settings import (
     AppSettings,
     KnowledgeSettings,
@@ -230,6 +234,46 @@ class KnowledgeServiceTests(unittest.TestCase):
     def test_decode_tool_payload_accepts_json_code_fence_and_double_encoding(self):
         self.assertEqual({"records": []}, decode_tool_payload('```json\n{"records": []}\n```'))
         self.assertEqual({"title": "测试"}, decode_tool_payload('"{\\"title\\": \\"测试\\"}"'))
+
+    def test_document_payload_accepts_nested_result_and_data_wrappers(self):
+        payload = {
+            "result": {
+                "data": {
+                    "title": "被包装的文档",
+                    "document_type": "Markdown",
+                    "content": "实际正文",
+                }
+            }
+        }
+
+        document = normalize_document_payload(payload)
+
+        self.assertEqual("被包装的文档", document["title"])
+        self.assertEqual("实际正文", document["content"])
+
+    def test_document_payload_accepts_mcp_text_content_blocks(self):
+        payload = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"title": "文本块文档", "content": "文本块中的正文"},
+                        ensure_ascii=False,
+                    ),
+                }
+            ]
+        }
+
+        document = normalize_document_payload(payload)
+
+        self.assertEqual("文本块中的正文", document["content"])
+
+    def test_search_payload_accepts_nested_records(self):
+        payload = {"result": {"data": {"total_records": 0, "records": []}}}
+
+        result = normalize_search_payload(payload)
+
+        self.assertEqual([], result["records"])
 
 
 if __name__ == "__main__":

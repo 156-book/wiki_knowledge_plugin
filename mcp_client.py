@@ -48,6 +48,110 @@ def decode_tool_payload(payload: Any) -> Any:
     return value
 
 
+_WRAPPER_KEYS = (
+    "data",
+    "result",
+    "document",
+    "wiki_document",
+    "wiki_content",
+    "output",
+    "payload",
+)
+
+
+def _walk_payload(value: Any, depth: int = 0):
+    """遍历常见MCP包装结构，不输出或记录真实正文。"""
+    if depth > 8:
+        return
+    decoded = decode_tool_payload(value)
+    yield decoded
+    if isinstance(decoded, dict):
+        visited: set[str] = set()
+        for key in _WRAPPER_KEYS:
+            if key in decoded:
+                visited.add(key)
+                yield from _walk_payload(decoded[key], depth + 1)
+        for key, child in decoded.items():
+            if key not in visited and isinstance(child, (dict, list)):
+                yield from _walk_payload(child, depth + 1)
+    elif isinstance(decoded, list):
+        for child in decoded:
+            yield from _walk_payload(child, depth + 1)
+
+
+def _text_from_content(value: Any, depth: int = 0) -> str:
+    if depth > 8 or value is None:
+        return ""
+    if isinstance(value, str):
+        stripped = value.strip()
+        decoded = decode_tool_payload(stripped)
+        if decoded is not value and isinstance(decoded, (dict, list)):
+            nested = _text_from_content(decoded, depth + 1)
+            return nested or stripped
+        return stripped
+    if isinstance(value, list):
+        parts = [_text_from_content(item, depth + 1) for item in value]
+        return "\n".join(part for part in parts if part).strip()
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for key in ("text", "markdown", "body", "html", "value", "content"):
+            if key in value:
+                text = _text_from_content(value[key], depth + 1)
+                if text:
+                    parts.append(text)
+        return "\n".join(dict.fromkeys(parts)).strip()
+    return ""
+
+
+def _payload_shape(value: Any) -> str:
+    """只描述字段名和类型，避免在错误信息中泄露Wiki正文。"""
+    decoded = decode_tool_payload(value)
+    if isinstance(decoded, dict):
+        parts = [f"{key}:{type(child).__name__}" for key, child in decoded.items()]
+        return "dict{" + ", ".join(parts[:20]) + "}"
+    if isinstance(decoded, list):
+        child_type = type(decoded[0]).__name__ if decoded else "empty"
+        return f"list[{len(decoded)}]({child_type})"
+    return type(decoded).__name__
+
+
+def normalize_document_payload(payload: Any) -> dict[str, Any]:
+    """兼容不同Wiki-MCP版本对文档结果的包装方式。"""
+    fallback: dict[str, Any] | None = None
+    for candidate in _walk_payload(payload):
+        if not isinstance(candidate, dict):
+            continue
+        content_key = next(
+            (key for key in ("content", "body", "markdown", "正文") if key in candidate),
+            None,
+        )
+        has_metadata = any(
+            key in candidate
+            for key in ("title", "document_type", "document_owner_name", "last_update_time")
+        )
+        if content_key is None:
+            continue
+        normalized = dict(candidate)
+        content = _text_from_content(candidate.get(content_key))
+        if content_key != "content":
+            normalized["content"] = content
+        elif content:
+            normalized["content"] = content
+        if content:
+            return normalized
+        if has_metadata and fallback is None:
+            fallback = normalized
+    return fallback or {}
+
+
+def normalize_search_payload(payload: Any) -> dict[str, Any]:
+    """兼容 ``records`` 位于 data/result 等包装层中的搜索结果。"""
+    for candidate in _walk_payload(payload):
+        if isinstance(candidate, dict) and isinstance(candidate.get("records"), list):
+            return candidate
+    return {}
+
+
 class WikiMCPClient:
     """在固定后台线程和事件循环中复用一个 stdio MCP 会话。"""
 
@@ -183,9 +287,11 @@ class WikiMCPClient:
             "search_wiki_documents",
             {"url": url, "search_range": search_range, "search_key": search_key},
         )
-        decoded = decode_tool_payload(payload)
-        if not isinstance(decoded, dict):
-            raise MCPClientError("Wiki-MCP 搜索结果格式异常。")
+        decoded = normalize_search_payload(payload)
+        if not decoded:
+            raise MCPClientError(
+                f"Wiki-MCP 搜索结果格式异常，返回结构：{_payload_shape(payload)}"
+            )
         records = decoded.get("records", [])
         if not isinstance(records, list):
             raise MCPClientError("Wiki-MCP 搜索结果缺少 records 列表。")
@@ -193,9 +299,16 @@ class WikiMCPClient:
 
     def fetch_document(self, url: str) -> dict[str, Any]:
         payload = self.call_tool("fetch_wiki_content", {"url": url})
-        decoded = decode_tool_payload(payload)
-        if not isinstance(decoded, dict):
-            raise MCPClientError("Wiki-MCP 文档内容格式异常。")
+        decoded = normalize_document_payload(payload)
+        if not decoded:
+            raise MCPClientError(
+                f"Wiki-MCP 文档内容格式异常，返回结构：{_payload_shape(payload)}"
+            )
+        if not str(decoded.get("content") or "").strip():
+            raise MCPClientError(
+                "Wiki-MCP返回了文档元数据，但正文为空，"
+                f"字段结构：{_payload_shape(decoded)}"
+            )
         return decoded
 
     def close(self) -> None:
