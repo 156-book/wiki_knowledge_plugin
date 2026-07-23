@@ -151,6 +151,19 @@ class KnowledgeServiceTests(unittest.TestCase):
 
         self.assertEqual(direct, result.sources[0].url)
         self.assertEqual("这个流程开始前需要做什么？", llm.calls[0][0])
+        self.assertEqual([], wiki.search_calls)
+
+    def test_direct_wiki_read_failure_reports_mcp_error(self):
+        direct = "https://wiki.huawei.com/direct"
+        wiki = FakeWikiClient(
+            documents={direct: RuntimeError("permission denied")}
+        )
+        service = KnowledgeService(make_settings(), wiki, FakeLLMClient())
+
+        with self.assertRaisesRegex(
+            KnowledgeServiceError, "Wiki-MCP读取正文失败：permission denied"
+        ):
+            service.answer_question(f"{direct} 这篇文章的内容是什么？")
 
     def test_no_matching_documents_returns_clear_message(self):
         root = WikiRoot("团队知识库", "https://wiki.huawei.com/root")

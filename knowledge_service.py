@@ -248,6 +248,30 @@ class KnowledgeService:
             used += len(section)
         return "\n\n".join(sections)
 
+    @staticmethod
+    def _safe_service_error(exc: BaseException) -> str:
+        text = " ".join((str(exc).strip() or type(exc).__name__).split())
+        return text[:800]
+
+    def _answer_direct_wiki(self, question: str, direct_url: str) -> AnswerResult:
+        """明确给出Wiki链接时直接读取正文，避免无意义的关键词搜索。"""
+        hit = SearchHit("指定Wiki文档", direct_url, ())
+        try:
+            document = self._fetch_hit(hit)
+        except Exception as exc:
+            detail = self._safe_service_error(exc)
+            raise KnowledgeServiceError(
+                f"已识别到Wiki链接，但Wiki-MCP读取正文失败：{detail}"
+            ) from exc
+
+        context = self._build_context([document])
+        try:
+            answer = self._llm.answer(question, context)
+        except Exception as exc:
+            detail = self._safe_service_error(exc)
+            raise KnowledgeServiceError(detail or "大模型暂时无法总结Wiki正文。") from exc
+        return AnswerResult(answer=answer.strip(), sources=(document,))
+
     def _tool_definitions(self, roots: tuple[WikiRoot, ...]) -> list[dict[str, Any]]:
         root_names = "、".join(root.name for root in roots) or "默认知识库"
         return [
@@ -378,11 +402,11 @@ class KnowledgeService:
     def answer_question(self, raw_question: str) -> AnswerResult:
         question, direct_url = self._extract_question_and_url(raw_question)
         if direct_url:
-            roots = (WikiRoot("指定Wiki", direct_url, "当前文档及子文档"),)
-        else:
-            roots = self._settings.knowledge.roots
-            if not roots:
-                raise KnowledgeServiceError("插件尚未配置团队Wiki根链接，请联系插件负责人。")
+            return self._answer_direct_wiki(question, direct_url)
+
+        roots = self._settings.knowledge.roots
+        if not roots:
+            raise KnowledgeServiceError("插件尚未配置团队Wiki根链接，请联系插件负责人。")
 
         state = _AgentState(
             roots=roots,
@@ -390,10 +414,6 @@ class KnowledgeService:
             documents_by_url={},
             allowed_urls={root.url for root in roots},
         )
-        if direct_url:
-            state.allowed_urls.add(direct_url)
-            state.hits_by_url[direct_url] = SearchHit("指定Wiki文档", direct_url, ())
-
         try:
             answer = self._llm.answer_with_tools(
                 question,
@@ -413,7 +433,7 @@ class KnowledgeService:
             # 模型已经完成搜索但未读取正文时，插件自动读取最高相关结果，
             # 避免出现“模型回答了，但没有任何可引用资料”的情况。
             documents = self._fetch_documents(
-                list(state.hits_by_url.values()), direct_url
+                list(state.hits_by_url.values()), None
             )[: self._settings.knowledge.max_fetch_documents]
         if not documents:
             raise KnowledgeServiceError(
