@@ -61,9 +61,10 @@
   "llm": {
     "base_url": "http://api.openai.rnd.huawei.com/v1",
     "api_key": "sk-1234",
-    "model": "Claude 3.5 Sonnet",
+    "model": "deepseek-v3.1-terminus-chat",
     "timeout_seconds": 120,
-    "temperature": 0.1
+    "temperature": 0.1,
+    "max_tokens": 2048
   },
   "extra_config": {
     "w3_account": "__REPLACE_WITH_W3_ACCOUNT__",

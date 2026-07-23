@@ -49,7 +49,7 @@ class LLMToolLoopTests(unittest.TestCase):
     def test_model_can_call_search_tool_before_final_answer(self):
         client = InternalLLMClient(
             LLMSettings(
-                base_url="http://llm/v1", api_key="test", model="Claude 3.5 Sonnet"
+                base_url="http://llm/v1", api_key="test", model="deepseek-v3.1-terminus-chat"
             )
         )
         fake_openai = FakeOpenAI()
@@ -78,7 +78,10 @@ class LLMToolLoopTests(unittest.TestCase):
         self.assertEqual("根据资料，先检查设备连接。[1]", reply)
         self.assertEqual([("search_knowledge_base", {"search_key": "设备连接"})], calls)
         self.assertEqual(2, len(fake_openai.chat.completions.calls))
-        self.assertEqual("Claude 3.5 Sonnet", fake_openai.chat.completions.calls[0]["model"])
+        self.assertEqual(
+            "deepseek-v3.1-terminus-chat",
+            fake_openai.chat.completions.calls[0]["model"],
+        )
         self.assertIn("tools", fake_openai.chat.completions.calls[0])
 
 

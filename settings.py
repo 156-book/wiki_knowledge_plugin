@@ -87,6 +87,7 @@ class LLMSettings:
     model: str
     timeout_seconds: float = 120.0
     temperature: float = 0.1
+    max_tokens: int = 2048
 
 
 @dataclass(frozen=True)
@@ -208,11 +209,15 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
     temperature = llm_data.get("temperature", 0.1)
     if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
         raise ConfigurationError("llm.temperature 必须是数字。")
+    max_tokens = llm_data.get("max_tokens", 2048)
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0:
+        raise ConfigurationError("llm.max_tokens 必须是正整数。")
     llm = LLMSettings(
         base_url=base_url,
         api_key=api_key,
         model=model,
         timeout_seconds=_positive_number(llm_data, "timeout_seconds", 120.0),
         temperature=float(temperature),
+        max_tokens=max_tokens,
     )
     return AppSettings(knowledge=knowledge, mcp=mcp, llm=llm)

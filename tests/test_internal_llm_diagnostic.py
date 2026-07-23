@@ -46,7 +46,7 @@ class InternalLLMDiagnosticTests(unittest.TestCase):
             chat=SimpleNamespace(completions=FakeCompletions())
         )
 
-        result = test_model(client, "Claude 3.5 Sonnet", "test-key")
+        result = test_model(client, "deepseek-v3.1-terminus-chat", "test-key")
 
         self.assertTrue(result.passed)
         self.assertTrue(result.basic_chat.success)

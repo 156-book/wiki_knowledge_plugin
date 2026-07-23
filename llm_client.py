@@ -39,6 +39,21 @@ class InternalLLMClient:
     def __init__(self, settings: LLMSettings):
         self._settings = settings
         self._client: Any = None
+        self._http_client: Any = None
+
+    def _safe_error_detail(self, exc: BaseException) -> str:
+        status_code = getattr(exc, "status_code", None)
+        text = str(exc).strip() or type(exc).__name__
+        if self._settings.api_key:
+            text = text.replace(self._settings.api_key, "***")
+        text = " ".join(text.split())[:800]
+        prefix = f"HTTP {status_code}, " if status_code else ""
+        return f"{prefix}{type(exc).__name__}: {text}"
+
+    def _call_error(self, stage: str, exc: BaseException) -> LLMClientError:
+        detail = self._safe_error_detail(exc)
+        print(f"[wiki-knowledge-plugin][LLM][{stage}] {detail}")
+        return LLMClientError(f"内部大模型调用失败（{detail}）")
 
     def _get_client(self) -> Any:
         if not self._settings.base_url or not self._settings.model:
@@ -47,13 +62,22 @@ class InternalLLMClient:
             raise LLMClientError("内部大模型 API Key 尚未配置。")
         if self._client is None:
             try:
+                import httpx
                 from openai import OpenAI
             except ImportError as exc:
-                raise LLMClientError("缺少 openai 依赖，请先安装 requirements.txt。") from exc
+                raise LLMClientError("缺少 openai/httpx 依赖，请先安装 requirements.txt。") from exc
+            # 内部接口文档的示例使用 --noproxy；测试脚本也是在 direct 模式下
+            # 通过。正式客户端保持相同行为，避免办公机系统代理导致连接失败。
+            self._http_client = httpx.Client(
+                timeout=self._settings.timeout_seconds,
+                trust_env=False,
+                follow_redirects=True,
+            )
             self._client = OpenAI(
                 base_url=self._settings.base_url,
                 api_key=self._settings.api_key,
                 timeout=self._settings.timeout_seconds,
+                http_client=self._http_client,
                 # 公司内部网关文档使用该请求头；同时保留OpenAI SDK默认鉴权头，
                 # 兼容不同版本的内部网关。
                 default_headers={"x-goog-api-key": self._settings.api_key},
@@ -78,13 +102,14 @@ class InternalLLMClient:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=self._settings.temperature,
+                max_tokens=self._settings.max_tokens,
                 stream=False,
             )
             reply = response.choices[0].message.content
         except LLMClientError:
             raise
         except Exception as exc:
-            raise LLMClientError("内部大模型调用失败，请稍后重试。") from exc
+            raise self._call_error("basic_chat", exc) from exc
         reply_text = str(reply or "").strip()
         if not reply_text:
             raise LLMClientError("内部大模型未返回有效回答。")
@@ -108,20 +133,30 @@ class InternalLLMClient:
             {"role": "system", "content": _TOOL_AGENT_SYSTEM_PROMPT},
             {"role": "user", "content": question},
         ]
+        search_completed = False
 
         for _ in range(max_rounds):
+            active_tools = tools
+            if not search_completed:
+                search_tools = [
+                    tool
+                    for tool in tools
+                    if tool.get("function", {}).get("name") == "search_knowledge_base"
+                ]
+                if search_tools:
+                    active_tools = search_tools
             try:
                 response = self._get_client().chat.completions.create(
                     model=self._settings.model,
                     messages=local_messages,
-                    tools=tools,
-                    temperature=self._settings.temperature,
+                    tools=active_tools,
+                    max_tokens=self._settings.max_tokens,
                     stream=False,
                 )
             except LLMClientError:
                 raise
             except Exception as exc:
-                raise LLMClientError("内部大模型工具调用失败，请稍后重试。") from exc
+                raise self._call_error("tool_chat", exc) from exc
 
             message = response.choices[0].message
             tool_calls = getattr(message, "tool_calls", None) or []
@@ -168,6 +203,8 @@ class InternalLLMClient:
                     result = tool_executor(function["name"], arguments)
                 except Exception as exc:
                     result = f"工具执行失败：{type(exc).__name__}"
+                if function["name"] == "search_knowledge_base":
+                    search_completed = True
                 if not isinstance(result, str):
                     result = json.dumps(result, ensure_ascii=False)
                 local_messages.append(
