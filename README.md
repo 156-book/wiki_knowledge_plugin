@@ -1,6 +1,6 @@
 # 团队知识库助手
 
-该插件通过 Wiki-MCP 实时搜索团队Wiki、读取相关文档，再调用公司内部 OpenAI 兼容模型生成回答。Wiki正文不会写入 `UserData`，回答末尾的来源链接由插件代码根据MCP结果生成。
+该插件通过公司内部 OpenAI 兼容模型先分析用户意图，再通过工具调用 Wiki-MCP 搜索和读取团队Wiki，最后生成有依据的回答。Wiki正文不会写入 `UserData`，回答末尾的来源链接由插件代码根据真实MCP结果生成。
 
 ## 部署前配置
 
@@ -8,8 +8,8 @@
 
 1. 将 `owner` 和白名单中的占位符替换为插件负责人工号。
 2. 将 `wiki_knowledge.roots[0].url` 替换为团队Wiki根文档链接。
-3. 根据内部模型使用说明填写 `llm.base_url` 和 `llm.model`。
-4. 在小鲁班开发工具中运行 `python main.py`，选择“加密数据”，分别加密W3密码和模型API Key，然后填写到 `extra_config`。
+3. `llm.base_url` 当前按内部接口文档填写为 `http://api.openai.rnd.huawei.com/v1`，模型暂用 `Claude 3.5 Sonnet`。如果模型服务要求真实Key，请将 `llm.api_key` 改为可用值，或使用加密的 `extra_config.llm_api_key_encrypted`。
+4. 在小鲁班开发工具中运行 `python main.py`，选择“加密数据”，加密W3密码和模型API Key后填写到 `extra_config`。
 5. 将 `extra_config.w3_account` 替换为W3账号。
 6. 内部AI市场当前页面的版本与本地 `uvx` 安装命令版本可能不同，发布前应把 `wiki_mcp.command` 替换为页面上最新的完整 `uvx` 命令。
 
@@ -39,10 +39,12 @@ PLR设备连接失败应该怎么处理？
 https://wiki.huawei.com/... 这个测试流程有哪些注意事项？
 ```
 
-插件只调用两个只读工具：
+模型可调用两个只读知识库工具，插件再将其映射到Wiki-MCP：
 
-- `search_wiki_documents`
-- `fetch_wiki_content`
+- `search_knowledge_base` → `search_wiki_documents`
+- `read_knowledge_document` → `fetch_wiki_content`
+
+模型必须先搜索，再读取正文；插件只接受搜索结果中的链接作为正文读取目标，并由插件代码统一追加来源链接。
 
 ## 本地测试
 

@@ -59,8 +59,9 @@
     "timeout_seconds": 120
   },
   "llm": {
-    "base_url": "__REPLACE_WITH_INTERNAL_OPENAI_COMPATIBLE_BASE_URL__",
-    "model": "__REPLACE_WITH_INTERNAL_MODEL_NAME__",
+    "base_url": "http://api.openai.rnd.huawei.com/v1",
+    "api_key": "sk-1234",
+    "model": "Claude 3.5 Sonnet",
     "timeout_seconds": 120,
     "temperature": 0.1
   },
@@ -70,4 +71,3 @@
     "llm_api_key_encrypted": "__REPLACE_WITH_ENCRYPTED_LLM_API_KEY__"
   }
 }
-

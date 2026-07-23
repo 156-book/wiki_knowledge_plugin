@@ -204,7 +204,7 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
     model = os.environ.get("WIKI_LLM_MODEL") or _usable_text(llm_data.get("model"))
     api_key = os.environ.get("WIKI_LLM_API_KEY") or _decrypt_optional(
         extra.get("llm_api_key_encrypted"), "大模型 API Key"
-    )
+    ) or _usable_text(llm_data.get("api_key"))
     temperature = llm_data.get("temperature", 0.1)
     if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
         raise ConfigurationError("llm.temperature 必须是数字。")

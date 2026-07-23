@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -37,6 +38,16 @@ class RetrievedDocument:
 class AnswerResult:
     answer: str
     sources: tuple[RetrievedDocument, ...]
+
+
+@dataclass
+class _AgentState:
+    """一次模型工具调用过程中的检索结果，不跨请求保存。"""
+
+    roots: tuple[WikiRoot, ...]
+    hits_by_url: dict[str, SearchHit]
+    documents_by_url: dict[str, RetrievedDocument]
+    allowed_urls: set[str]
 
 
 _URL_PATTERN = re.compile(r"https://[^\s<>\"']+", re.IGNORECASE)
@@ -237,6 +248,133 @@ class KnowledgeService:
             used += len(section)
         return "\n\n".join(sections)
 
+    def _tool_definitions(self, roots: tuple[WikiRoot, ...]) -> list[dict[str, Any]]:
+        root_names = "、".join(root.name for root in roots) or "默认知识库"
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_knowledge_base",
+                    "description": (
+                        "在团队Wiki知识库中搜索与用户问题相关的文档。"
+                        f"可用知识库：{root_names}。必须先调用此工具，再读取正文。"
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "search_key": {
+                                "type": "string",
+                                "description": "从用户问题提炼出的简短检索关键词。",
+                            },
+                            "root_name": {
+                                "type": "string",
+                                "description": "可选知识库名称，不确定时留空并搜索全部知识库。",
+                            },
+                        },
+                        "required": ["search_key"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_knowledge_document",
+                    "description": "读取搜索结果中的Wiki文档正文，用于支撑最终回答。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "search_knowledge_base 返回的Wiki文档链接。",
+                            }
+                        },
+                        "required": ["url"],
+                    },
+                },
+            },
+        ]
+
+    @staticmethod
+    def _json_tool_result(value: Any) -> str:
+        return json.dumps(value, ensure_ascii=False)
+
+    @staticmethod
+    def _select_roots(roots: tuple[WikiRoot, ...], root_name: str) -> tuple[WikiRoot, ...]:
+        requested = root_name.strip().casefold()
+        if not requested:
+            return roots
+        selected = tuple(root for root in roots if root.name.casefold() == requested)
+        return selected or roots
+
+    def _execute_search_tool(
+        self, state: _AgentState, arguments: dict[str, Any], fallback_question: str
+    ) -> str:
+        search_key = str(arguments.get("search_key") or fallback_question).strip()
+        if not search_key:
+            return self._json_tool_result({"records": [], "error": "search_key不能为空"})
+        root_name = str(arguments.get("root_name") or "")
+        selected_roots = self._select_roots(state.roots, root_name)
+        groups: list[list[SearchHit]] = []
+        errors = 0
+        for root in selected_roots:
+            try:
+                groups.append(self._search_one_root(root, search_key))
+            except Exception:
+                errors += 1
+        hits = self._round_robin(groups, self._settings.knowledge.max_search_results)
+        for hit in hits:
+            state.hits_by_url[hit.url] = hit
+            state.allowed_urls.add(hit.url)
+        if not hits and errors == len(selected_roots):
+            return self._json_tool_result(
+                {"records": [], "error": "Wiki-MCP暂时无法完成检索，请稍后重试。"}
+            )
+        return self._json_tool_result(
+            {
+                "total_records": len(hits),
+                "records": [
+                    {
+                        "title": hit.title,
+                        "url": hit.url,
+                        "content_match_snippets": list(hit.snippets),
+                    }
+                    for hit in hits
+                ],
+            }
+        )
+
+    def _execute_read_tool(self, state: _AgentState, arguments: dict[str, Any]) -> str:
+        url = str(arguments.get("url") or "").strip()
+        if not url or not self._settings.knowledge.is_allowed_wiki_url(url):
+            return self._json_tool_result({"error": "该链接不是允许访问的Wiki链接。"})
+        if url not in state.allowed_urls:
+            return self._json_tool_result(
+                {"error": "只能读取搜索结果中的Wiki链接，请先调用search_knowledge_base。"}
+            )
+        hit = state.hits_by_url.get(url) or SearchHit("指定Wiki文档", url, ())
+        try:
+            document = self._fetch_hit(hit)
+        except Exception:
+            return self._json_tool_result({"error": "Wiki文档读取失败，请尝试其他搜索结果。"})
+        state.documents_by_url[url] = document
+        return self._json_tool_result(
+            {
+                "title": document.title,
+                "url": document.url,
+                "last_update_time": document.last_update_time,
+                "content": document.content[: self._settings.knowledge.max_chars_per_document],
+            }
+        )
+
+    def _execute_tool(
+        self, state: _AgentState, tool_name: str, arguments: dict[str, Any], question: str
+    ) -> str:
+        if tool_name == "search_knowledge_base":
+            return self._execute_search_tool(state, arguments, question)
+        if tool_name == "read_knowledge_document":
+            return self._execute_read_tool(state, arguments)
+        return self._json_tool_result({"error": f"不支持的知识库工具：{tool_name}"})
+
     def answer_question(self, raw_question: str) -> AnswerResult:
         question, direct_url = self._extract_question_and_url(raw_question)
         if direct_url:
@@ -246,20 +384,41 @@ class KnowledgeService:
             if not roots:
                 raise KnowledgeServiceError("插件尚未配置团队Wiki根链接，请联系插件负责人。")
 
-        hits = self._search(roots, question)
-        documents = self._fetch_documents(hits, direct_url)
+        state = _AgentState(
+            roots=roots,
+            hits_by_url={},
+            documents_by_url={},
+            allowed_urls={root.url for root in roots},
+        )
+        if direct_url:
+            state.allowed_urls.add(direct_url)
+            state.hits_by_url[direct_url] = SearchHit("指定Wiki文档", direct_url, ())
+
+        try:
+            answer = self._llm.answer_with_tools(
+                question,
+                self._tool_definitions(roots),
+                lambda tool_name, arguments: self._execute_tool(
+                    state, tool_name, arguments, question
+                ),
+            )
+        except AttributeError as exc:
+            raise KnowledgeServiceError("当前大模型客户端不支持工具调用接口。") from exc
+        except Exception as exc:
+            message = str(exc).strip()
+            raise KnowledgeServiceError(message or "大模型暂时无法完成知识库问答。") from exc
+
+        documents = list(state.documents_by_url.values())
+        if not documents and state.hits_by_url:
+            # 模型已经完成搜索但未读取正文时，插件自动读取最高相关结果，
+            # 避免出现“模型回答了，但没有任何可引用资料”的情况。
+            documents = self._fetch_documents(
+                list(state.hits_by_url.values()), direct_url
+            )[: self._settings.knowledge.max_fetch_documents]
         if not documents:
             raise KnowledgeServiceError(
                 "当前知识库中没有找到足以回答该问题的资料，请更换关键词后重试。"
             )
-        context = self._build_context(documents)
-        try:
-            answer = self._llm.answer(question, context)
-        except Exception as exc:
-            message = str(exc).strip()
-            if message:
-                raise KnowledgeServiceError(message) from exc
-            raise KnowledgeServiceError("已找到Wiki资料，但大模型暂时无法生成回答。") from exc
         return AnswerResult(answer=answer.strip(), sources=tuple(documents))
 
 

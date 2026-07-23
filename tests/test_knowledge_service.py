@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from wiki_knowledge_plugin.knowledge_service import (
@@ -62,9 +63,26 @@ class FakeLLMClient:
     def __init__(self, reply="这是严格根据Wiki资料生成的回答。[1]"):
         self.reply = reply
         self.calls = []
+        self.tool_calls = []
 
     def answer(self, question, context):
         self.calls.append((question, context))
+        return self.reply
+
+    def answer_with_tools(self, question, tools, tool_executor, max_rounds=6):
+        self.tool_calls.append("search_knowledge_base")
+        search_result = tool_executor(
+            "search_knowledge_base", {"search_key": question, "root_name": ""}
+        )
+        search_data = json.loads(search_result)
+        context_parts = [search_result]
+        records = search_data.get("records", [])
+        for record in records[:2]:
+            self.tool_calls.append("read_knowledge_document")
+            context_parts.append(
+                tool_executor("read_knowledge_document", {"url": record["url"]})
+            )
+        self.calls.append((question, "\n".join(context_parts)))
         return self.reply
 
 
@@ -110,6 +128,15 @@ class KnowledgeServiceTests(unittest.TestCase):
         self.assertIn("https://wiki.huawei.com/doc-2", rendered)
         self.assertNotIn("UserData", rendered)
         self.assertEqual("当前文档及子文档", wiki.search_calls[0][1])
+        self.assertEqual(
+            [
+                "search_knowledge_base",
+                "read_knowledge_document",
+                "read_knowledge_document",
+            ],
+            llm.tool_calls,
+        )
+        self.assertIn("连接失败时先检查USB连接", llm.calls[0][1])
 
     def test_direct_wiki_link_is_used_without_configured_root(self):
         direct = "https://wiki.huawei.com/direct"
@@ -194,4 +221,3 @@ class KnowledgeServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
