@@ -1,0 +1,73 @@
+{
+  "owner": "__REPLACE_WITH_YOUR_EMPLOYEE_ID__",
+  "plugin_name": "团队知识库助手",
+  "help_info": "查询团队Wiki知识库，根据Wiki资料回答问题并给出来源链接。",
+  "type": "all",
+  "whitelist": {
+    "individual": [
+      "__REPLACE_WITH_YOUR_EMPLOYEE_ID__"
+    ],
+    "group": [],
+    "department": []
+  },
+  "region": "y",
+  "wiki_knowledge": {
+    "roots": [
+      {
+        "name": "团队知识库",
+        "url": "__REPLACE_WITH_TEAM_WIKI_ROOT_URL__",
+        "search_range": "当前文档及子文档",
+        "enabled": true
+      }
+    ],
+    "allowed_hosts": [
+      "wiki.huawei.com",
+      "codehub-g.huawei.com",
+      "gdemate.gts.huawei.com",
+      "wisedevops.huawei.com",
+      "portal.edevops.huawei.com"
+    ],
+    "max_search_results": 8,
+    "max_fetch_documents": 3,
+    "max_chars_per_document": 6000,
+    "max_context_chars": 18000,
+    "cache_ttl_seconds": 300,
+    "max_question_chars": 500
+  },
+  "wiki_mcp": {
+    "transport": "stdio",
+    "command": [
+      "uvx",
+      "--index-url",
+      "https://mirrors.tools.huawei.com/pypi/simple",
+      "--allow-insecure-host",
+      "mirrors.tools.huawei.com",
+      "--allow-insecure-host",
+      "cmc.centralrepo.rnd.huawei.com",
+      "--from",
+      "https://cmc.centralrepo.rnd.huawei.com/artifactory/product_generic/mcp-server/python/wiki-mcp/1.7.7/wiki-mcp_1.7.7_1780991075.tar.gz",
+      "wiki-mcp",
+      "stdio"
+    ],
+    "environment": {
+      "HTTP_PROXY": "",
+      "HTTPS_PROXY": "",
+      "http_proxy": "",
+      "https_proxy": "",
+      "NO_PROXY": "*"
+    },
+    "timeout_seconds": 120
+  },
+  "llm": {
+    "base_url": "__REPLACE_WITH_INTERNAL_OPENAI_COMPATIBLE_BASE_URL__",
+    "model": "__REPLACE_WITH_INTERNAL_MODEL_NAME__",
+    "timeout_seconds": 120,
+    "temperature": 0.1
+  },
+  "extra_config": {
+    "w3_account": "__REPLACE_WITH_W3_ACCOUNT__",
+    "w3_password_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_PASSWORD__",
+    "llm_api_key_encrypted": "__REPLACE_WITH_ENCRYPTED_LLM_API_KEY__"
+  }
+}
+
