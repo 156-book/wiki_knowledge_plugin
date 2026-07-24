@@ -4,7 +4,7 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from wiki_knowledge_plugin.test_internal_llm import test_model
+from test_internal_llm import test_model
 
 
 def text_response(content):
