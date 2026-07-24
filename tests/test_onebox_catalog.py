@@ -92,7 +92,42 @@ class OneBoxCatalogTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertEqual("效率专区", first[0].name)
 
+    def test_security_policy_response_is_reported_without_treating_it_as_path(self):
+        onebox_module = types.ModuleType("util.api.by_cookie.onebox")
+        excel_module = types.ModuleType("util.com.excel")
+        excel_calls = []
+
+        onebox_module.get_onebox_file_path = lambda *args: (
+            "{'securityAccreditRequest': {'permissions': ['FILE_DOWNLOAD']}, "
+            "'securityAccreditResult': {'message': '未匹配到合适的安全策略，您的操作被阻止'}}"
+        )
+
+        def get_excel_values(*args, **kwargs):
+            excel_calls.append((args, kwargs))
+            return []
+
+        excel_module.get_excel_values = get_excel_values
+        provider = OneBoxWikiRootProvider(
+            onebox_url="https://onebox.huawei.com/table",
+            w3_account="employee",
+            w3_password="password",
+            w3_cid="cid",
+            search_range="当前文档及子文档",
+            allowed_hosts=("wiki.huawei.com",),
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "util.api.by_cookie.onebox": onebox_module,
+                "util.com.excel": excel_module,
+            },
+        ):
+            with self.assertRaisesRegex(OneBoxCatalogError, "安全策略拒绝.*未匹配到合适的安全策略"):
+                provider.get_roots()
+
+        self.assertEqual([], excel_calls)
+
 
 if __name__ == "__main__":
     unittest.main()
-
