@@ -67,7 +67,7 @@
     "max_tokens": 2048
   },
   "extra_config": {
-    "w3_account": "__REPLACE_WITH_W3_ACCOUNT__",
+    "w3_account": "__REPLACE_WITH_PLAIN_W3_ACCOUNT__",
     "w3_password_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_PASSWORD__"
   }
 }

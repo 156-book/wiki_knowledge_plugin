@@ -312,6 +312,23 @@ class KnowledgeServiceTests(unittest.TestCase):
         finally:
             client._executor.shutdown(wait=False, cancel_futures=True)
 
+    def test_encrypted_w3_account_is_rejected_before_login(self):
+        client = WikiMCPClient(
+            MCPSettings(
+                transport="stdio",
+                command=("uvx",),
+                w3_account="encrypted-value-1X@ciphertext",
+                w3_password="plain-password-after-decrypt",
+            )
+        )
+        try:
+            with self.assertRaisesRegex(
+                MCPClientError, "w3_account 必须填写明文工号"
+            ):
+                client._runtime_environment()
+        finally:
+            client._executor.shutdown(wait=False, cancel_futures=True)
+
 
 if __name__ == "__main__":
     unittest.main()

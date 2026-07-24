@@ -24,6 +24,11 @@ class MCPClientError(RuntimeError):
 _T = TypeVar("_T")
 
 
+def _looks_like_encrypted_account(value: str) -> bool:
+    text = value.strip()
+    return text.startswith("{AES}") or "1X@" in text
+
+
 def decode_tool_payload(payload: Any) -> Any:
     """将 MCP 文本结果还原为 JSON；无法解析时保留原文本。"""
     if isinstance(payload, (dict, list)):
@@ -200,6 +205,11 @@ class WikiMCPClient:
         environment = dict(os.environ)
         environment.update(self._settings.environment)
         if self._settings.w3_account:
+            if _looks_like_encrypted_account(self._settings.w3_account):
+                raise MCPClientError(
+                    "W3账号配置错误：w3_account 必须填写明文工号，不能填写加密结果；"
+                    "只需要加密 w3_password_encrypted。"
+                )
             environment["w3Account"] = self._settings.w3_account
         if self._settings.w3_password:
             environment["password"] = self._settings.w3_password
