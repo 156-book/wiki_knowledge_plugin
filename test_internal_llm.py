@@ -41,9 +41,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-DEFAULT_BASE_URL = "http://api.openai.rnd.huawei.com/v1"
-DEFAULT_API_KEY = "sk-1234"
-DEFAULT_MODEL = "Claude 3.5 Sonnet"
+DEFAULT_BASE_URL = "https://www.juaiapi.com/v1"
+DEFAULT_API_KEY = "sk-KbjVFwLSLZqoMMOvUpeKXsour4I4rXe66TnMajQfSwraIAqf"
+DEFAULT_MODEL = "gpt-5.6-sol"
 
 
 @dataclass
@@ -111,7 +111,7 @@ def create_client(base_url: str, api_key: str, network_mode: str, timeout: float
     trust_env = network_mode == "environment"
     http_client = httpx.Client(
         timeout=timeout,
-        trust_env=trust_env,
+        trust_env=False,
         follow_redirects=True,
     )
     return OpenAI(
@@ -240,15 +240,15 @@ def test_tool_call_and_round_trip(
         },
     ]
 
-    search_url = "https://wiki.example.invalid/test"
+    search_url = "https://wiki.huawei.com/domains/189176/wiki/400668/WIKI2026070611733269"
     search_result = json.dumps(
         {
             "total_records": 1,
             "records": [
                 {
-                    "title": "设备连接测试文档",
+                    "title": "RK3568烧机指导",
                     "url": search_url,
-                    "content_match_snippets": ["测试资料：设备连接前应检查连接线。"],
+                    "content_match_snippets": ["对RK3568芯片的烧机流程。"],
                 }
             ],
         },
