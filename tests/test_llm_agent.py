@@ -4,8 +4,8 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from wiki_knowledge_plugin.llm_client import InternalLLMClient
-from wiki_knowledge_plugin.settings import LLMSettings
+from llm_client import InternalLLMClient
+from settings import LLMSettings
 
 
 class FakeCompletions:
