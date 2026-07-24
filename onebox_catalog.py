@@ -211,10 +211,19 @@ class OneBoxWikiRootProvider:
             )
         try:
             from util.api.by_cookie.onebox import get_onebox_file_path
+        except ImportError as exc:
+            missing = getattr(exc, "name", None) or "util.api.by_cookie.onebox"
+            raise OneBoxCatalogError(
+                "当前运行环境无法导入 OneBox 工具模块 "
+                f"{missing}。这些是小鲁班运行时内置接口，不是可通过 requirements.txt 安装的普通 pip 包。"
+            ) from exc
+        try:
             from util.com.excel import get_excel_values
         except ImportError as exc:
+            missing = getattr(exc, "name", None) or "util.com.excel"
             raise OneBoxCatalogError(
-                "当前运行环境缺少 OneBox/Excel 依赖，无法读取知识库目录。"
+                "当前运行环境无法导入 Excel 工具模块 "
+                f"{missing}。请确认小鲁班运行时提供 util.com.excel，或补充表格读取依赖。"
             ) from exc
 
         try:
@@ -245,4 +254,3 @@ class OneBoxWikiRootProvider:
 
     def __call__(self) -> tuple[WikiRoot, ...]:
         return self.get_roots()
-
