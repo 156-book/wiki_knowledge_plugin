@@ -20,11 +20,13 @@ try:
     from .knowledge_service import KnowledgeService, KnowledgeServiceError, format_answer
     from .llm_client import InternalLLMClient
     from .mcp_client import WikiMCPClient
+    from .onebox_catalog import OneBoxWikiRootProvider
     from .settings import ConfigurationError, load_settings
 except ImportError:  # 直接运行 plugin.py 时使用同目录模块
     from knowledge_service import KnowledgeService, KnowledgeServiceError, format_answer
     from llm_client import InternalLLMClient
     from mcp_client import WikiMCPClient
+    from onebox_catalog import OneBoxWikiRootProvider
     from settings import ConfigurationError, load_settings
 
 
@@ -55,10 +57,22 @@ def _get_service() -> KnowledgeService:
     with _service_lock:
         if _service is None:
             settings = load_settings()
+            roots_provider = None
+            if settings.onebox.enabled:
+                roots_provider = OneBoxWikiRootProvider(
+                    onebox_url=settings.onebox.url,
+                    w3_account=settings.mcp.w3_account,
+                    w3_password=settings.mcp.w3_password,
+                    w3_cid=settings.mcp.w3_cid,
+                    search_range=settings.onebox.search_range,
+                    allowed_hosts=settings.knowledge.allowed_hosts,
+                    cache_ttl_seconds=settings.onebox.cache_ttl_seconds,
+                )
             _service = KnowledgeService(
                 settings=settings,
                 wiki_client=WikiMCPClient(settings.mcp),
                 llm_client=InternalLLMClient(settings.llm),
+                roots_provider=roots_provider,
             )
     return _service
 

@@ -11,12 +11,12 @@
         "department": []
     },
     "region": "g",
-    "wiki_knowledge": {
+  "wiki_knowledge": {
     "roots": [
       {
         "name": "窗口开发四组知识库",
         "url": "https://wiki.huawei.com/domains/189176/wiki/400668/WIKI2026072211966971",
-        "search_range": "知识库",
+        "search_range": "当前文档及子文档",
         "enabled": true
       }
     ],
@@ -33,6 +33,12 @@
     "max_context_chars": 18000,
     "cache_ttl_seconds": 300,
     "max_question_chars": 500
+  },
+  "onebox_knowledge": {
+    "enabled": false,
+    "url": "__REPLACE_WITH_ONEBOX_KNOWLEDGE_TABLE_URL__",
+    "search_range": "当前文档及子文档",
+    "cache_ttl_seconds": 300
   },
   "wiki_mcp": {
     "transport": "stdio",
@@ -69,6 +75,7 @@
   "extra_config": {
     "w3_account": "d50064298",
     "w3_password_encrypted": "20230712144356N/pLjdrNUNKMwnHFUAw61Q==1X@I4WsBXZxTRo//nlPOKp3Fg==",
+    "w3_cid_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_CID__",
     "llm_api_key_encrypted": "__REPLACE_WITH_ENCRYPTED_LLM_API_KEY__"
   }
 }

@@ -93,6 +93,42 @@ class FakeLLMClient:
 
 
 class KnowledgeServiceTests(unittest.TestCase):
+    def test_dynamic_roots_provider_drives_search(self):
+        root = WikiRoot(
+            "效率专区",
+            "https://wiki.huawei.com/efficiency",
+            "当前文档及子文档",
+        )
+        wiki = FakeWikiClient(
+            searches={
+                root.url: [
+                    {
+                        "title": "效率文档",
+                        "url": "https://wiki.huawei.com/efficiency/doc",
+                    }
+                ]
+            },
+            documents={
+                "https://wiki.huawei.com/efficiency/doc": {
+                    "title": "效率文档",
+                    "content": "效率说明",
+                }
+            },
+        )
+        provider_calls = []
+        service = KnowledgeService(
+            make_settings(),
+            wiki,
+            FakeLLMClient(),
+            roots_provider=lambda: provider_calls.append(True) or (root,),
+        )
+
+        service.answer_question("效率说明")
+
+        self.assertEqual([True], provider_calls)
+        self.assertEqual(root.url, wiki.search_calls[0][0])
+        self.assertEqual("当前文档及子文档", wiki.search_calls[0][1])
+
     def test_default_root_search_fetch_answer_and_real_links(self):
         root = WikiRoot("团队知识库", "https://wiki.huawei.com/root")
         wiki = FakeWikiClient(

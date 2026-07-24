@@ -7,7 +7,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 try:
     from .settings import AppSettings, WikiRoot
@@ -55,12 +55,31 @@ _URL_END_PUNCTUATION = "，。；：！？、,.!?;:)]}）】》>"
 
 
 class KnowledgeService:
-    def __init__(self, settings: AppSettings, wiki_client: Any, llm_client: Any):
+    def __init__(
+        self,
+        settings: AppSettings,
+        wiki_client: Any,
+        llm_client: Any,
+        roots_provider: Callable[[], tuple[WikiRoot, ...]] | None = None,
+    ):
         self._settings = settings
         self._wiki = wiki_client
         self._llm = llm_client
+        self._roots_provider = roots_provider
         self._document_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._cache_lock = threading.Lock()
+
+    def _current_roots(self) -> tuple[WikiRoot, ...]:
+        if self._roots_provider is not None:
+            try:
+                roots = tuple(self._roots_provider())
+            except KnowledgeServiceError:
+                raise
+            except Exception as exc:
+                detail = " ".join(str(exc).split())[:800] or type(exc).__name__
+                raise KnowledgeServiceError(detail) from exc
+            return roots
+        return self._settings.knowledge.roots
 
     def _extract_question_and_url(self, text: str) -> tuple[str, str | None]:
         urls = [match.group(0).rstrip(_URL_END_PUNCTUATION) for match in _URL_PATTERN.finditer(text)]
@@ -404,7 +423,7 @@ class KnowledgeService:
         if direct_url:
             return self._answer_direct_wiki(question, direct_url)
 
-        roots = self._settings.knowledge.roots
+        roots = self._current_roots()
         if not roots:
             raise KnowledgeServiceError("插件尚未配置团队Wiki根链接，请联系插件负责人。")
 

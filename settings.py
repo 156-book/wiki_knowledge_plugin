@@ -78,6 +78,18 @@ class MCPSettings:
     timeout_seconds: float = 120.0
     w3_account: str = ""
     w3_password: str = ""
+    # OneBox 的文件接口仍需要客户端指纹；Wiki-MCP 本身不需要这个字段。
+    w3_cid: str = ""
+
+
+@dataclass(frozen=True)
+class OneBoxSettings:
+    """OneBox 知识库目录配置。表格内的 Wiki 链接不写入插件配置。"""
+
+    enabled: bool = False
+    url: str = ""
+    search_range: str = "当前文档及子文档"
+    cache_ttl_seconds: int = 300
 
 
 @dataclass(frozen=True)
@@ -95,6 +107,7 @@ class AppSettings:
     knowledge: KnowledgeSettings
     mcp: MCPSettings
     llm: LLMSettings
+    onebox: OneBoxSettings = field(default_factory=OneBoxSettings)
 
 
 def _positive_int(data: dict[str, Any], key: str, default: int) -> int:
@@ -109,6 +122,37 @@ def _positive_number(data: dict[str, Any], key: str, default: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         raise ConfigurationError(f"{key} 必须是正数。")
     return float(value)
+
+
+def _load_onebox_settings(data: dict[str, Any]) -> OneBoxSettings:
+    raw = data.get("onebox_knowledge", {})
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ConfigurationError("onebox_knowledge 必须是 JSON 对象。")
+
+    enabled = raw.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigurationError("onebox_knowledge.enabled 必须是布尔值。")
+
+    search_range = _usable_text(raw.get("search_range")) or "当前文档及子文档"
+    if search_range not in {"知识库", "类目", "当前文档及子文档"}:
+        raise ConfigurationError("onebox_knowledge.search_range 配置不正确。")
+
+    cache_ttl_seconds = raw.get("cache_ttl_seconds", 300)
+    if (
+        isinstance(cache_ttl_seconds, bool)
+        or not isinstance(cache_ttl_seconds, int)
+        or cache_ttl_seconds <= 0
+    ):
+        raise ConfigurationError("onebox_knowledge.cache_ttl_seconds 必须是正整数。")
+
+    return OneBoxSettings(
+        enabled=enabled,
+        url=_usable_text(raw.get("url")),
+        search_range=search_range,
+        cache_ttl_seconds=cache_ttl_seconds,
+    )
 
 
 def _load_roots(data: dict[str, Any], allowed_hosts: tuple[str, ...]) -> tuple[WikiRoot, ...]:
@@ -151,6 +195,8 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
     if not isinstance(raw, dict):
         raise ConfigurationError("config.json 顶层必须是 JSON 对象。")
 
+    onebox = _load_onebox_settings(raw)
+
     knowledge_data = raw.get("wiki_knowledge", {})
     mcp_data = raw.get("wiki_mcp", {})
     llm_data = raw.get("llm", {})
@@ -189,8 +235,14 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
         raise ConfigurationError("当前版本仅支持 Wiki-MCP 官方推荐的 stdio 本地连接方式。")
 
     w3_account = os.environ.get("WIKI_W3_ACCOUNT") or _usable_text(extra.get("w3_account"))
+    # 兼容参考插件使用的 user/pwd/cid 字段；w3_account 优先保持明文工号配置。
+    if not w3_account and _usable_text(extra.get("user")):
+        w3_account = _decrypt_optional(extra.get("user"), "W3 账号")
     w3_password = os.environ.get("WIKI_W3_PASSWORD") or _decrypt_optional(
-        extra.get("w3_password_encrypted"), "W3 密码"
+        extra.get("w3_password_encrypted") or extra.get("pwd"), "W3 密码"
+    )
+    w3_cid = os.environ.get("WIKI_W3_CID") or _decrypt_optional(
+        extra.get("w3_cid_encrypted") or extra.get("cid"), "W3 CID"
     )
     mcp = MCPSettings(
         transport=transport,
@@ -199,6 +251,7 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
         timeout_seconds=_positive_number(mcp_data, "timeout_seconds", 120.0),
         w3_account=w3_account,
         w3_password=w3_password,
+        w3_cid=w3_cid,
     )
 
     base_url = os.environ.get("WIKI_LLM_BASE_URL") or _usable_text(llm_data.get("base_url"))
@@ -220,4 +273,4 @@ def load_settings(config_path: str | os.PathLike[str] | None = None) -> AppSetti
         temperature=float(temperature),
         max_tokens=max_tokens,
     )
-    return AppSettings(knowledge=knowledge, mcp=mcp, llm=llm)
+    return AppSettings(knowledge=knowledge, mcp=mcp, llm=llm, onebox=onebox)
