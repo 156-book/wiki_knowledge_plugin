@@ -1,22 +1,22 @@
 {
-  "owner": "__REPLACE_WITH_YOUR_EMPLOYEE_ID__",
-  "plugin_name": "团队知识库助手",
-  "help_info": "查询团队Wiki知识库，根据Wiki资料回答问题并给出来源链接。",
-  "type": "all",
-  "whitelist": {
-    "individual": [
-      "__REPLACE_WITH_YOUR_EMPLOYEE_ID__"
-    ],
-    "group": [],
-    "department": []
-  },
-  "region": "y",
-  "wiki_knowledge": {
+    "owner": "d50064298",
+    "plugin_name": "窗口组知识库",
+    "help_info": "",
+    "type": "all",
+    "whitelist": {
+        "individual": [
+            "d50064298"
+        ],
+        "group": [],
+        "department": []
+    },
+    "region": "g",
+    "wiki_knowledge": {
     "roots": [
       {
-        "name": "团队知识库",
-        "url": "__REPLACE_WITH_TEAM_WIKI_ROOT_URL__",
-        "search_range": "当前文档及子文档",
+        "name": "窗口开发四组知识库",
+        "url": "https://wiki.huawei.com/domains/189176/wiki/400668/WIKI2026072211966971",
+        "search_range": "知识库",
         "enabled": true
       }
     ],
@@ -37,7 +37,7 @@
   "wiki_mcp": {
     "transport": "stdio",
     "command": [
-      "uvx",
+      "C:\\Users\\d50064298\\AppData\\Local\\xiaoluban\\bin\\dist-windows\\resources\\bin\\uvx.exe",
       "--index-url",
       "https://mirrors.tools.huawei.com/pypi/simple",
       "--allow-insecure-host",
@@ -67,7 +67,8 @@
     "max_tokens": 2048
   },
   "extra_config": {
-    "w3_account": "__REPLACE_WITH_W3_ACCOUNT__",
-    "w3_password_encrypted": "__REPLACE_WITH_ENCRYPTED_W3_PASSWORD__"
+    "w3_account": "d50064298",
+    "w3_password_encrypted": "20230712144356N/pLjdrNUNKMwnHFUAw61Q==1X@I4WsBXZxTRo//nlPOKp3Fg==",
+    "llm_api_key_encrypted": "__REPLACE_WITH_ENCRYPTED_LLM_API_KEY__"
   }
 }
